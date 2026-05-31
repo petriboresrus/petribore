@@ -1,0 +1,87 @@
+name: petribore
+
+on:
+schedule:
+  # Poster: top of every hour, 7–14 UTC. Script enforces UK 8–14 local, handles DST.
+  - cron: '2 7-14 * * *'
+  # Reposter: every 20 minutes
+  - cron: '*/20 * * * *'
+workflow_dispatch:
+  inputs:
+    job:
+      description: 'Which job to run manually'
+      type: choice
+      options: [poster, reposter, both]
+      default: both
+
+concurrency:
+group: petribore-state
+cancel-in-progress: false
+
+jobs:
+run:
+  runs-on: ubuntu-latest
+  permissions:
+    contents: write
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: pip
+
+    - name: Install deps
+      run: pip install -r requirements.txt
+
+    - name: Decide which to run
+      id: which
+      run: |
+        POSTER=false
+        REPOSTER=false
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          case "${{ inputs.job }}" in
+            poster)   POSTER=true ;;
+            reposter) REPOSTER=true ;;
+            both)     POSTER=true; REPOSTER=true ;;
+          esac
+        else
+          # schedule
+          if [ "${{ github.event.schedule }}" = "2 7-14 * * *" ]; then
+            POSTER=true
+          else
+            REPOSTER=true
+          fi
+        fi
+        echo "poster=$POSTER"   >> $GITHUB_OUTPUT
+        echo "reposter=$REPOSTER" >> $GITHUB_OUTPUT
+
+    - name: Run poster
+      if: steps.which.outputs.poster == 'true'
+      env:
+        BSKY_HANDLE: ${{ secrets.BSKY_HANDLE }}
+        BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
+      run: python poster.py
+
+    - name: Run reposter
+      if: steps.which.outputs.reposter == 'true'
+      env:
+        BSKY_HANDLE: ${{ secrets.BSKY_HANDLE }}
+        BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
+      run: python reposter.py
+
+    - name: Commit state
+      run: |
+        git config user.name  "petribore-bot"
+        git config user.email "bot@users.noreply.github.com"
+        git add state_poster.json state_reposter.json 2>/dev/null || true
+        if ! git diff --cached --quiet; then
+          git commit -m "state: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # Pull rebase in case the other job committed in parallel
+          git pull --rebase --autostash origin ${{ github.ref_name }} || true
+          git push
+        else
+          echo "No state changes to commit."
+        fi
