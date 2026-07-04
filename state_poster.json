@@ -1,5 +1,9 @@
 {
-  "date": "2026-07-03",
-  "hours_used": [],
-  "posted_cities": []
+  "date": "2026-07-04",
+  "hours_used": [
+    10
+  ],
+  "posted_cities": [
+    "Settle"
+  ]
 }
