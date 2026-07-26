@@ -1,9 +1,11 @@
 {
   "date": "2026-07-26",
   "hours_used": [
-    10
+    10,
+    12
   ],
   "posted_cities": [
-    "Aldeburgh"
+    "Aldeburgh",
+    "Melrose"
   ]
 }
